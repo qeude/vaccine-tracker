@@ -1,5 +1,5 @@
 import "./utils/env";
-import { App, LogLevel } from "@slack/bolt";
+import { App, LogLevel, Option } from "@slack/bolt";
 import { VaccineCenter } from "./models/VaccineCenter";
 import { scheduleJob } from "node-schedule";
 import axios from "axios";
@@ -10,13 +10,11 @@ const app = new App({
   logLevel: LogLevel.DEBUG,
 });
 
-let region: string = "44";
+let selectedRegion: string = "44";
 let vaccineCenters: VaccineCenter[] = [];
-//FIXME: should delete this later
-let callNumbers = 0;
 const fetch = async (): Promise<VaccineCenter[]> => {
   return axios
-    .get(`https://vitemadose.gitlab.io/vitemadose/${region}.json`)
+    .get(`https://vitemadose.gitlab.io/vitemadose/${selectedRegion}.json`)
     .then((response) => {
       const data = response.data.centres_disponibles;
       let centers = data.map(
@@ -34,12 +32,6 @@ const fetch = async (): Promise<VaccineCenter[]> => {
             element.plateforme
           )
       );
-      //FIXME: should delete this later
-      centers[0].available_chronodoses =
-        centers[0].available_chronodoses + callNumbers;
-      centers[1].available_chronodoses =
-        centers[1].available_chronodoses + callNumbers;
-      callNumbers++;
       return centers;
     })
     .catch((error) => {
@@ -122,7 +114,7 @@ const getVaccinesCentersToNotify = (
   // Start your app
   await app.start(Number(process.env.PORT) || 3000);
 
-  var event = scheduleJob("*/1 * * * * *", () => {
+  var event = scheduleJob("*/10 * * * *", () => {
     fetch().then((centers) => {
       console.log("fetched centers 🎉");
       const centersToNotify = getVaccinesCentersToNotify(centers);
