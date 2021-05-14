@@ -1,7 +1,7 @@
 <div align=center><img src="images/icon_rounded.png" align=center height="100"></div>
 <h1 align=center>Vaccine Tracker</h1>
 
-<img align=center src="images/demo.gif" height="500">
+<div align=center><img src="images/demo.gif" height="600"></div>
 
 ## 📖 Description
 
