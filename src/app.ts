@@ -1,9 +1,11 @@
 import "./utils/env";
-import { App, LogLevel, Option } from "@slack/bolt";
+import { App, LogLevel } from "@slack/bolt";
 import { VaccineCenter } from "./models/VaccineCenter";
 import { scheduleJob } from "node-schedule";
-import axios from "axios";
-import { getRegionCodes } from "./utils/Utils";
+import { buildSetRegionModal } from "./ui/SetRegion";
+import { buildBlocksForMessage } from "./ui/Message";
+import { fetch } from "./services/api";
+
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
@@ -12,32 +14,6 @@ const app = new App({
 
 let selectedRegion: string = "44";
 let vaccineCenters: VaccineCenter[] = [];
-const fetch = async (): Promise<VaccineCenter[]> => {
-  return axios
-    .get(`https://vitemadose.gitlab.io/vitemadose/${selectedRegion}.json`)
-    .then((response) => {
-      const data = response.data.centres_disponibles;
-      let centers = data.map(
-        (element: any) =>
-          new VaccineCenter(
-            element.gid,
-            element.url,
-            element.nom,
-            element.location.cp,
-            element.location.city,
-            element.vaccine_type,
-            element.appointment_schedules.find(
-              (schedule: any) => schedule.name == "chronodose"
-            ).total,
-            element.plateforme
-          )
-      );
-      return centers;
-    })
-    .catch((error) => {
-      console.error(error);
-    });
-};
 
 const getChannels = async (app: App): Promise<string[]> => {
   const channels = await app.client.conversations.list({
@@ -50,64 +26,15 @@ const getChannels = async (app: App): Promise<string[]> => {
 };
 
 const sendMessage = async (app: App, centers: VaccineCenter[]) => {
-  const centersBlocks = centers.flatMap((center) =>
-    computeBlockForVaccineCenter(center)
-  );
   const channels = await getChannels(app);
   channels.forEach((channel) => {
     app.client.chat.postMessage({
       token: process.env.SLACK_BOT_TOKEN,
       channel: channel,
       text: "De nouveaux créneaux sont disponibles !",
-      blocks: buildBaseBlocks().concat(centersBlocks),
+      blocks: buildBlocksForMessage(centers),
     });
   });
-};
-
-const buildBaseBlocks = () => {
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*De nouveaux créneaux sont disponibles !* 🎉",
-      },
-    },
-    {
-      type: "divider",
-    },
-  ];
-};
-
-const computeBlockForVaccineCenter = (center: VaccineCenter) => {
-  const vaccineTypes = center.vaccine_types
-    .map((type) => `💉 ${type}`)
-    .join("\n");
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*${center.name}*\n ${center.city} - ${center.postal_code}\n ${vaccineTypes}`,
-      },
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: `Aller sur le site de ${center.platform}`,
-            emoji: true,
-          },
-          value: `button-${center.id}`,
-          url: center.url,
-          action_id: `button-${center.id}`,
-        },
-      ],
-    },
-  ];
 };
 
 const getVaccinesCentersToNotify = (
@@ -123,92 +50,41 @@ const getVaccinesCentersToNotify = (
   });
 };
 
-app.message("/set_region");
-
-app.command("/region", async ({ command, ack, client }) => {
+app.command("/set_region", async ({ command, ack, client }) => {
   try {
     // Acknowledge shortcut request
     await ack();
-    const optionBlocks: Option[] = getRegionCodes().map((elt) => {
-      return {
-        text: {
-          type: "plain_text",
-          text: elt,
-          emoji: true,
-        },
-        value: elt,
-      };
-    });
-    const result = await client.views.open({
-      trigger_id: command.trigger_id,
-      view: {
-        type: "modal",
-        title: {
-          type: "plain_text",
-          text: "My App",
-        },
-        close: {
-          type: "plain_text",
-          text: "Close",
-        },
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `La region actuelle est: ${selectedRegion}.\n Voulez vous la modifier ?`,
-            },
-          },
-          {
-            type: "input",
-            element: {
-              type: "static_select",
-              placeholder: {
-                type: "plain_text",
-                text: "Selectionnez une région.",
-                emoji: true,
-              },
-              options: optionBlocks,
-              action_id: "static_select-action",
-            },
-            label: {
-              type: "plain_text",
-              text: "Région",
-              emoji: true,
-            },
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Valider",
-                  emoji: true,
-                },
-                value: `button-submit-region`,
-                action_id: `button-submit-region`,
-              },
-            ],
-          },
-        ],
-      },
-    });
-
-    console.log(result);
+    const test = await buildSetRegionModal(command, selectedRegion);
+    const result = await client.views.open(JSON.parse(JSON.stringify(test)));
   } catch (error) {
     console.error(error);
   }
+});
+
+app.view("set_region_view", async ({ ack, body, view, client }) => {
+  await ack();
+  const value =
+    view["state"]["values"]["set-region-input"]["set-region-action"][
+      "selected_option"
+    ]["value"];
+  selectedRegion = value;
+  vaccineCenters = [];
+  fetch(selectedRegion).then((centers) => {
+    vaccineCenters = centers;
+  });
+});
+
+app.command("/region", async ({ command, ack, say }) => {
+  await ack();
+  await say(`La région sélectionnée est: *${selectedRegion}*`);
 });
 
 (async () => {
   // Start your app
   await app.start(Number(process.env.PORT) || 3000);
 
-  var event = scheduleJob("*/10 * * * *", () => {
-    fetch().then((centers) => {
-      console.log("fetched centers 🎉");
+  var event = scheduleJob("*/5 * * * * * *", () => {
+    fetch(selectedRegion).then((centers) => {
       const centersToNotify = getVaccinesCentersToNotify(centers);
       if (centersToNotify.length > 0) {
         sendMessage(app, centersToNotify);
@@ -216,6 +92,5 @@ app.command("/region", async ({ command, ack, client }) => {
       vaccineCenters = centers;
     });
   });
-  console.log(`${JSON.stringify(app.client.bots)}`);
   console.log("⚡️ Bolt app is running!");
 })();
