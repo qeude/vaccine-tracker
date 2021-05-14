@@ -83,7 +83,7 @@ app.command("/region", async ({ command, ack, say }) => {
   // Start your app
   await app.start(Number(process.env.PORT) || 3000);
 
-  var event = scheduleJob("*/5 * * * * * *", () => {
+  var event = scheduleJob("*/5 * * * *", () => {
     fetch(selectedRegion).then((centers) => {
       const centersToNotify = getVaccinesCentersToNotify(centers);
       if (centersToNotify.length > 0) {
