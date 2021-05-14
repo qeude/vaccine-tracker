@@ -39,15 +39,28 @@ const fetch = async (): Promise<VaccineCenter[]> => {
     });
 };
 
-const sendMessage = (app: App, centers: VaccineCenter[]) => {
+const getChannels = async (app: App): Promise<string[]> => {
+  const channels = await app.client.conversations.list({
+    token: process.env.SLACK_BOT_TOKEN,
+    exclude_archived: true,
+  });
+  return (channels.channels ?? [])
+    .filter((elt) => elt.is_member && elt.is_channel && elt.name !== undefined)
+    .map((elt) => elt.name ?? "");
+};
+
+const sendMessage = async (app: App, centers: VaccineCenter[]) => {
   const centersBlocks = centers.flatMap((center) =>
     computeBlockForVaccineCenter(center)
   );
-  app.client.chat.postMessage({
-    token: process.env.SLACK_BOT_TOKEN,
-    channel: "nothing",
-    text: "De nouveaux créneaux sont disponibles !",
-    blocks: buildBaseBlocks().concat(centersBlocks),
+  const channels = await getChannels(app);
+  channels.forEach((channel) => {
+    app.client.chat.postMessage({
+      token: process.env.SLACK_BOT_TOKEN,
+      channel: channel,
+      text: "De nouveaux créneaux sont disponibles !",
+      blocks: buildBaseBlocks().concat(centersBlocks),
+    });
   });
 };
 
@@ -110,6 +123,85 @@ const getVaccinesCentersToNotify = (
   });
 };
 
+app.message("/set_region");
+
+app.command("/region", async ({ command, ack, client }) => {
+  try {
+    // Acknowledge shortcut request
+    await ack();
+    const optionBlocks: Option[] = getRegionCodes().map((elt) => {
+      return {
+        text: {
+          type: "plain_text",
+          text: elt,
+          emoji: true,
+        },
+        value: elt,
+      };
+    });
+    const result = await client.views.open({
+      trigger_id: command.trigger_id,
+      view: {
+        type: "modal",
+        title: {
+          type: "plain_text",
+          text: "My App",
+        },
+        close: {
+          type: "plain_text",
+          text: "Close",
+        },
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `La region actuelle est: ${selectedRegion}.\n Voulez vous la modifier ?`,
+            },
+          },
+          {
+            type: "input",
+            element: {
+              type: "static_select",
+              placeholder: {
+                type: "plain_text",
+                text: "Selectionnez une région.",
+                emoji: true,
+              },
+              options: optionBlocks,
+              action_id: "static_select-action",
+            },
+            label: {
+              type: "plain_text",
+              text: "Région",
+              emoji: true,
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Valider",
+                  emoji: true,
+                },
+                value: `button-submit-region`,
+                action_id: `button-submit-region`,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    console.log(result);
+  } catch (error) {
+    console.error(error);
+  }
+});
+
 (async () => {
   // Start your app
   await app.start(Number(process.env.PORT) || 3000);
@@ -124,5 +216,6 @@ const getVaccinesCentersToNotify = (
       vaccineCenters = centers;
     });
   });
+  console.log(`${JSON.stringify(app.client.bots)}`);
   console.log("⚡️ Bolt app is running!");
 })();
