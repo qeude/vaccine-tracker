@@ -41,9 +41,7 @@ const getVaccinesCentersToNotify = (
   centers: VaccineCenter[]
 ): VaccineCenter[] => {
   return centers.filter((center) => {
-    const oldCenter = vaccineCenters.find(
-      (element) => (element.id = center.id)
-    );
+    const oldCenter = vaccineCenters.find((element) => element.id == center.id);
     console.log(`oldCenter: ${oldCenter}`);
     console.log(`center: ${center}`);
     console.log(`oldCenter chronodoses: ${oldCenter?.available_chronodoses}`);
