@@ -44,9 +44,15 @@ const getVaccinesCentersToNotify = (
     const oldCenter = vaccineCenters.find(
       (element) => (element.id = center.id)
     );
-    return (
-      center.available_chronodoses > (oldCenter?.available_chronodoses ?? 0)
-    );
+    console.log(`oldCenter: ${oldCenter}`);
+    console.log(`center: ${center}`);
+    console.log(`oldCenter chronodoses: ${oldCenter?.available_chronodoses}`);
+    console.log(`center chronodoses: ${center.available_chronodoses}`);
+    if (oldCenter === undefined || oldCenter === null) {
+      return false;
+    } else {
+      return center.available_chronodoses > oldCenter.available_chronodoses;
+    }
   });
 };
 
@@ -83,7 +89,7 @@ app.command("/region", async ({ command, ack, say }) => {
   // Start your app
   await app.start(Number(process.env.PORT) || 3000);
 
-  var event = scheduleJob("*/1 * * * *", () => {
+  var event = scheduleJob("*/30 * * * * *", () => {
     fetch(selectedRegion).then((centers) => {
       const centersToNotify = getVaccinesCentersToNotify(centers);
       if (centersToNotify.length > 0) {
