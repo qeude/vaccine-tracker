@@ -8,7 +8,7 @@ export const fetch = async (
     .get(`https://vitemadose.gitlab.io/vitemadose/${selectedRegion}.json`)
     .then((response) => {
       const data = response.data.centres_disponibles;
-      const centers = data.map(
+      return data.map(
         (element: any) =>
           new VaccineCenter(
             element.gid,
@@ -23,8 +23,6 @@ export const fetch = async (
             element.plateforme
           )
       );
-      centers[0].available_chronodoses = 1;
-      return centers;
     })
     .catch((error) => {
       console.error(error);
